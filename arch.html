@@ -1,0 +1,485 @@
+<html>
+<head>
+<link rel='stylesheet' href='css/jquery-ui-1.8.17.custom.css' />
+<script type='text/javascript' src='js/jquery.min.js'></script>
+<script type='text/javascript' src='js/jquery-ui-1.8.17.custom.min.js'></script>
+<script type='text/javascript' src='js/jquery.svg.js'></script>
+<script type='text/javascript' src='js/jquery.svganim.js'></script>
+<script>
+var selection=null;
+var rotationAngle=0;
+var Sx=1,Sy=1;
+var Tx=0,Ty=0;
+var Rx=0,Ry=0;
+
+//Selection specifics
+
+var sx,sy,tx,ty,rx,ry;
+
+var s1x,s1y,t1x,t1y;
+
+function storeTransform()
+{
+	var svg = document.getElementById('viewport');
+	if(svg.getAttribute('transform')!=null)
+	{
+		var matrix=svg.getAttribute('transform').substring(7);
+		var matrix_elements=matrix.split(',');
+		matrix_elements[5]=matrix_elements[5].substring(0,matrix_elements[5].indexOf(')'));
+		Sx=parseFloat(matrix_elements[0]);
+		Sy=parseFloat(matrix_elements[3]);
+		Tx=parseFloat(matrix_elements[4]);
+		Ty=parseFloat(matrix_elements[5]);
+		Rx=parseFloat(matrix_elements[1]);
+		Ry=parseFloat(matrix_elements[2]);
+	}
+}
+function removeTiles()
+{
+	var background = document.getElementById('background');
+	background.parentNode.removeChild(background);
+}
+function zoomTo(element)
+{
+	highlightAll();
+	storeTransform();
+	var svg=document.getElementById('viewport');
+	while(element.nodeName=='tspan')
+	{
+		element=element.parentNode;	
+	}
+	selection=element;
+	var box = element.getBBox();
+	var initx=box.x;
+	var inity=box.y;
+	var transform='';
+	sx=1,sy=1,tx=0,ty=0,rx=0,ry=0;
+	if(element.getAttribute('transform')!=null)
+	{	
+		transform=element.getAttribute('transform');
+		if(element.getAttribute('transform').indexOf('matrix')>=0)
+		{
+			var matrix=element.getAttribute('transform').substring(7);
+			var matrix_elements=matrix.split(',');
+			matrix_elements[5]=matrix_elements[5].substring(0,matrix_elements[5].indexOf(')'));
+			sx=parseFloat(matrix_elements[0]);
+			sy=parseFloat(matrix_elements[3]);
+			tx=parseFloat(matrix_elements[4]);
+			ty=parseFloat(matrix_elements[5]);
+			rx=parseFloat(matrix_elements[1]);
+			ry=parseFloat(matrix_elements[2]);
+			rotationAngle=Math.asin(rx)*180/Math.PI;	
+		}
+		if(element.getAttribute('transform').indexOf('rotate')>=0)				//get the exact rotation angle if available
+		{
+			var index=element.getAttribute('transform').indexOf('rotate');
+			var str=element.getAttribute('transform').substring(index+7);
+			var str_elements=str.split(',');
+			rotationAngle=parseFloat(str_elements[0]);
+			if(index==0)
+			{
+				transform='';
+			}
+			else
+			{
+				transform=transform.substring(0,index-1);	
+			}
+		}
+	}
+	box.x*=sx;
+	box.x+=tx;
+	box.x*=Sx;
+	box.x+=Tx;
+
+	box.y*=sy;
+	box.y+=ty;
+	box.y*=Sy;
+	box.y+=Ty;
+	
+	box.width*=Sx*sx;
+	box.height*=Sy*sy;
+
+	var cx,cy;
+	if(element.nodeName=='image' || element.nodeName=='rect')
+	{
+		cx=parseFloat(element.getAttribute('x'))+parseFloat(element.getAttribute('width'))/2;
+		cy=parseFloat(element.getAttribute('y'))+parseFloat(element.getAttribute('height'))/2;
+	}
+	else if(element.nodeName=='circle' || element.nodeName=='ellipse')
+	{
+		cx=parseFloat(element.getAttribute('cx'));
+		cy=parseFloat(element.getAttribute('cy'));
+	}
+	else if(element.nodeName=='line')
+	{
+		var x1=parseFloat(element.getAttribute('x1'));
+		var x2=parseFloat(element.getAttribute('x2'));
+		var y1=parseFloat(element.getAttribute('y1'));
+		var y2=parseFloat(element.getAttribute('y2'));		
+		cx=(x1+x2)/2;
+		cy=(y1+y2)/2;
+	}
+	
+	else if(element.nodeName=='text')
+	{
+		var x=parseFloat(element.getAttribute('x'));
+		var y=parseFloat(element.getAttribute('y'));
+		cx=x+10;
+		cy=y+10;	
+	}
+	else if(element.nodeName=='g')
+	{
+		var view = element.getBBox();
+		cx=(view.x+view.width)/2;
+		cy=(view.y+view.height)/2;;
+	}
+	cx*=sx;
+	cx+=tx;
+	cx*=Sx;
+	cx+=Tx;
+	
+	cy*=sy;
+	cy+=ty;
+	cy*=Sy;
+	cy+=Ty;
+	
+	if(element.parentNode.getAttribute('class')=='frame')
+	{
+		if(element.parentNode.getAttribute('transform') != null)
+		{
+			var matrix=element.parentNode.getAttribute('transform').substring(7);
+			var matrix_elements=matrix.split(',');
+			matrix_elements[5]=matrix_elements[5].substring(0,matrix_elements[5].indexOf(')'));
+			s1x = parseFloat(matrix_elements[0]);
+			s1y = parseFloat(matrix_elements[3]);
+			t1x = parseFloat(matrix_elements[4]);
+			t1y = parseFloat(matrix_elements[5]);
+		}
+		else
+		{ 
+			s1x = 1;
+			s1y = 1;
+			t1x = 0;
+			t1y = 0;
+		}
+		box.x*=s1x;
+		box.x+=t1x;
+		box.y*=s1y;
+		box.y+=t1y;
+		box.width*=s1x;
+		box.height*=s1y;
+		cx*=s1x;
+		cx+=t1x;
+		cy*=s1y;
+		cy+=t1y;
+	}
+	
+	var rotator;
+	rotator='rotate('+0+','+cx+','+cy+')';
+	if(transform.length!=0)
+	{
+		rotator=transform+','+rotator;	
+	}
+	element.setAttribute('transform',rotator);
+	$('#svgcanvas').animate({svgViewBox : box.x+' '+box.y+' '+box.width+' '+box.height}, 650);
+	if(element.getAttribute('class')!='hotSpot' && element.parentNode.getAttribute('class')!='frame')
+	{
+		for(var i = 0;i<window.frame.length;++i)
+		{
+			if(window.frame[i].getAttribute('item') != element.getAttribute('item'))
+			{
+				$(window.frame[i]).animate({svgOpacity: '0.25'}, 650);
+			}
+		}
+	}
+}
+function highlightAll()
+{
+	for(var i = 0;i<window.frame.length;i++)
+	{
+		$(window.frame[i]).animate({svgOpacity:'1.0'}, 650);
+	}
+}
+function zoomNormal()
+{
+	var cx,cy;
+	if(selection!=null)
+	{
+		highlightAll();
+		var transform='';
+		if(selection.getAttribute('transform')!=null)
+		{	
+			transform=selection.getAttribute('transform');
+			if(selection.getAttribute('transform').indexOf('rotate')>=0)				//get the exact rotation angle if available
+			{
+				var index=selection.getAttribute('transform').indexOf('rotate');
+				if(index==0)
+				{
+					transform='';
+				}
+				else
+				{
+					transform=transform.substring(0,index-1);	
+				}
+			}
+		}
+		var cx,cy;
+		if(selection.nodeName=='image' || selection.nodeName=='rect')
+		{
+			cx=parseFloat(selection.getAttribute('x'))+parseFloat(selection.getAttribute('width'))/2;
+			cy=parseFloat(selection.getAttribute('y'))+parseFloat(selection.getAttribute('height'))/2;
+		}
+		else if(selection.nodeName=='circle' || selection.nodeName=='ellipse')
+		{
+			cx=parseFloat(selection.getAttribute('cx'));
+			cy=parseFloat(selection.getAttribute('cy'));
+		}
+		else if(selection.nodeName=='line')
+		{
+			var x1=parseFloat(selection.getAttribute('x1'));
+			var x2=parseFloat(selection.getAttribute('x2'));
+			var y1=parseFloat(selection.getAttribute('y1'));
+			var y2=parseFloat(selection.getAttribute('y2'));		
+			cx=(x1+x2)/2;
+			cy=(y1+y2)/2;
+		}
+		
+		else if(selection.nodeName=='text')
+		{
+			var x=parseFloat(selection.getAttribute('x'));
+			var y=parseFloat(selection.getAttribute('y'));
+			cx=x+10;
+			cy=y+10;	
+		}
+		else if(selection.nodeName=='g')
+		{	
+			var view = selection.getBBox();
+			cx=(view.x+view.width)/2;
+			cy=(view.y+view.height)/2;;
+		}
+		var rotator;
+		rotator='rotate('+rotationAngle+','+cx+','+cy+')';
+		if(transform.length!=0)
+		{
+			rotator=transform+','+rotator;	
+		}
+		selection.setAttribute('transform',rotator);
+	}
+	selection=null;
+	$('#svgcanvas').animate({svgViewBox : 0+' '+0+' '+screen.width+' '+screen.height}, 650);
+}
+
+function swapArrayElements(array_object, index_a, index_b)
+{
+    var temp = array_object[index_a];
+    array_object[index_a] = array_object[index_b];
+    array_object[index_b] = temp;
+}
+$(function() 
+{
+	$( '#dialog').dialog(
+	{
+		autoOpen: false, 
+		resizable : false,
+		open: function(event, ui) 
+		{ 
+			//hide close button.
+			$(this).parent().children().children('.ui-dialog-titlebar-close').hide();
+		}
+	});
+});
+function getElementByItem(itemName)
+{
+	var root = document.getElementById('viewport');
+	var itemSelected=root.firstChild;
+	while(itemSelected!=null)
+	{
+		if(itemSelected.nodeType==1 && itemSelected.getAttribute('item')==itemName)
+			return itemSelected;
+		itemSelected = itemSelected.nextSibling;
+	}
+	return null;
+}
+function removeChildren(node)
+{
+	while (node.hasChildNodes()) 
+	{
+    	node.removeChild(node.lastChild);
+    }
+}
+function highlight(element,event)
+{
+	var posX = event.clientX;
+	var posY = event.clientY;
+	var cutoffX = screen.width/2;
+	var cutoffY = screen.height/2;
+	var X,Y;
+	if(posX < cutoffX)
+		X = 'right';
+	else
+		X = 'left';
+	if(posY < cutoffY)
+		Y = 'buttom';
+	else
+		Y = 'top';
+	$(element).animate({svgOpacity : '0.5'}, 400);
+	var textDescription = document.createTextNode(element.getAttribute('content'));
+	removeChildren(document.getElementById('description'));
+	document.getElementById('description').appendChild(textDescription);
+	$('#dialog').dialog('option', 'title', element.getAttribute('title'));
+	$('#dialog').dialog('option', 'position', [X,Y]);
+	$('#dialog').dialog('open');
+}
+function lowlight(element)
+{
+	$(element).animate({svgOpacity : '0.0'}, 400);
+	$('#dialog').dialog('close');
+}
+function loadHotSpots()
+{
+	var root = document.getElementById('viewport');
+	var itemSelected=root.firstChild;
+	while(itemSelected!=null)
+	{
+		if(itemSelected.nodeType==1 && itemSelected.getAttribute('class')=='hotSpot')
+		{
+			lowlight(itemSelected);
+			itemSelected.setAttribute('onmouseover','highlight(this,event)');
+			itemSelected.setAttribute('onmouseout','lowlight(this)');
+		}
+		itemSelected = itemSelected.nextSibling;
+	}
+}
+var frame = new Array();
+var svgNS = "http://www.w3.org/2000/svg";
+var xlinkNS = "http://www.w3.org/1999/xlink";
+function loadFrames()
+{
+	var root = document.getElementById('viewport');
+	var itemSelected=root.firstChild;
+	while(itemSelected!=null)
+	{
+		if(itemSelected.nodeType==1 && (itemSelected.getAttribute('class')=='shape' || itemSelected.getAttribute('class')=='frame'))
+		{
+			window.frame.push(itemSelected);
+		}
+		if(itemSelected.nodeType==1 && itemSelected.getAttribute('class')=='hotSpot')
+		{
+			var x = itemSelected.getBBox().x;
+			var y = itemSelected.getBBox().y;
+			
+			sx=1,sy=1,tx=0,ty=0,rx=0,ry=0;
+			if(itemSelected.getAttribute('transform')!=null)
+			{	
+				transform=itemSelected.getAttribute('transform');
+				if(itemSelected.getAttribute('transform').indexOf('matrix')>=0)
+				{
+					var matrix=itemSelected.getAttribute('transform').substring(7);
+					var matrix_elements=matrix.split(',');
+					matrix_elements[5]=matrix_elements[5].substring(0,matrix_elements[5].indexOf(')'));
+					sx=parseFloat(matrix_elements[0]);
+					sy=parseFloat(matrix_elements[3]);
+					tx=parseFloat(matrix_elements[4]);
+					ty=parseFloat(matrix_elements[5]);
+					rx=parseFloat(matrix_elements[1]);
+					ry=parseFloat(matrix_elements[2]);
+					storeTransform();
+					x*=sx;
+					x+=tx;
+					y*=sy;
+					y+=ty-16;
+				}
+			}	
+			var callImg = document.createElementNS(svgNS,"image");
+			callImg.setAttributeNS(xlinkNS,"xlink:href","pImages/callout.svg");	
+			callImg.setAttributeNS(null,"x",x);
+			callImg.setAttributeNS(null,"y",y);
+			callImg.setAttributeNS(null,"width",16);
+			callImg.setAttributeNS(null,"height",16);
+			document.getElementById('viewport').appendChild(callImg);
+		}
+		
+		itemSelected = itemSelected.nextSibling;
+	}
+	maxNum=window.frame.length+1;
+	for(var i = 0;i<window.frame.length;i++)
+	{
+		for(var j = 0;j<window.frame.length;j++)
+		{
+			var inode = window.frame[i];
+			var jnode = window.frame[j];
+			var ifno = parseInt(inode.getAttribute('fno'));
+			var jfno = parseInt(jnode.getAttribute('fno'));
+			if(ifno < jfno)
+			{
+				swapArrayElements(window.frame,i,j);
+			}
+		}
+	}
+}
+var viewNumber = -1;
+var maxNum;
+var minNum=0;
+function moveFrame(event)
+{
+	var e = window.event || event;
+	switch(e.keyCode)
+	{
+		case 37:
+		case 33:
+		if(viewNumber <minNum)
+		{
+			return;
+		}
+		viewNumber --;
+		zoomTo(window.frame[viewNumber]);
+		break;
+		case 39:
+		case 34:
+			if(viewNumber >maxNum)
+			{
+				viewNumber=maxNum;
+				return;
+			}
+			viewNumber ++;
+			zoomTo(window.frame[viewNumber]);
+			break;
+		case 40:
+			zoomNormal();
+			break;
+		case 38:	
+			viewNumber =-1;
+			zoomNormal();
+			break;				
+				
+		case 35: 
+			viewNumber=maxNum;
+			zoomTo(window.frame[viewNumber]);								
+			break;
+										
+		case 36: 
+			viewNumber=minNum;
+			zoomTo(window.frame[viewNumber]);					
+			break;
+	}
+}
+</script>
+</head>
+<body>
+<div id='dialog' title='Title goes here' style='display:none;height:100%'>
+	<p id='description' style='font-family:serif;text-align:justify;'>Description goes here</p>
+</div>
+
+<div id='svgbasics' tabindex='0'>
+<svg id='svgcanvas' xmlns='http://www.w3.org/2000/svg' version='1.1' id='svgcanvas' xmlns:xlink='http://www.w3.org/1999/xlink' onclick='zoomNormal()' onload='document.getElementById("svgbasics").focus();loadHotSpots();removeTiles();'><g id="viewport" onload="storeTransform();loadFrames();zoomNormal()" onclick="zoomTo(event.target);event.stopPropagation();" transform="matrix(1.0000001192092896,0,0,1.0000001192092896,-171.29027187823522,-29.238863706586926)">
+		<circle cx="0" cy="0" r="100000" id="background" fill="url(#rulerPattern)" onclick="deselectChoice(event)"></circle><textCache index="1" content="<p>MIPS Architecture</p>"></textCache><textCache index="2" content="<p>By</p><p>S. Srikrishnan and V. Vishal Gautham</p>"></textCache><textCache index="3" content="<p>Introduction</p>"></textCache><textCache index="4" content="<p>What is MIPS ???</p>"></textCache><ellipse cx="199" cy="95" rx="291.8738390350534" ry="188.30570260326016" onclick="select(evt.target,evt)" fill="#ffffff" stroke="black" stroke-width="2" item="item7" class="shape" stroke-opacity="1.0" transform="matrix(1,0,0,1,867,193.99998474121094)" fno="3"></ellipse><image x="100" y="100" width="417.7248169415656px" height="417.7248169415656px" onclick="select(evt.target,evt)" stroke="black" xlink:href="pImages/MIPS_Architecture_(Pipelined).svg" item="item10" class="shape" transform="matrix(1,0,0,1,740.9999389648438,-5.0000152587890625)" stroke-opacity="1.0" fno="4"></image><rect x="150" y="150" width="28.000024914744003" height="55.000014901161194" onmousemove="resize(evt)" onclick="selectSpot(event.target,event)" fill="lightblue" stroke="black" opacity="0.5" stroke-width="2" stroke-opacity="1.0" title="ALU" content="In computing, an arithmetic logic unit (ALU) is a digital circuit that performs arithmetic and logical operations. The ALU is a fundamental building block of the central processing unit of a computer, and even the simplest microprocessors contain one for purposes such as maintaining timers. The processors found inside modern CPUs and graphics processing units (GPUs) accommodate very powerful and very complex ALUs; a single component may contain a number of ALUs." class="hotSpot" transform="matrix(1,0,0,1,919.9999389648438,165)"></rect><g class="frame" item="item11" transform="matrix(1,0,0,1,5.999999999999996,-6.396792817664476e-17)" stroke-opacity="1.0" fno="1"><rect x="106" y="1" width="216.95300000000003" height="157.05800000000005" onclick="select(evt.target,evt)" fill="#d2e3f4" stroke="black" stroke-width="1" item="item1" class="shape" stroke-opacity="1.0" transform="matrix(1,0,0,1,66,71)"></rect><text x="40" y="40" stroke="black" stroke-width="0.1" font-size="12" fill="#000000" onclick="select(evt.target,evt)" id="text1" item="item2" class="shape" stroke-opacity="1.0" transform="matrix(1.7715610265731812,0,0,1.7715610265731812,132,-10)"><tspan x="40" dy="25">MIPS Architecture</tspan></text><text x="40" y="40" stroke="black" stroke-width="0.1" font-size="12" fill="#000000" onclick="select(evt.target,evt)" id="text2" item="item3" class="shape" stroke-opacity="1.0" transform="matrix(1,0,0,1,142,99)"><tspan x="40" dy="25">By</tspan><tspan x="40" dy="25">S. Srikrishnan and V. Vishal Gautham</tspan></text></g><g class="frame" item="item12" transform="matrix(1,0,0,1,-25.99993896484374,9)" stroke-opacity="1.0" fno="2"><circle cx="255" cy="126" r="148.44766221890347" onclick="select(evt.target,evt)" fill="#fffbbd" stroke="black" stroke-width="2" item="item4" class="shape" stroke-opacity="1.0" transform="matrix(1,0,0,1,255,274)"></circle><text x="40" y="40" stroke="black" stroke-width="0.1" font-size="12" fill="#9e2300" onclick="select(evt.target,evt)" id="text3" item="item5" class="shape" stroke-opacity="1.0" transform="matrix(3.7974984645843506,0,0,3.7974984645843506,251,100)"><tspan x="40" dy="25">Introduction</tspan></text><text x="40" y="40" stroke="black" stroke-width="0.1" font-size="12" fill="#000000" onclick="select(evt.target,evt)" id="text4" item="item6" class="shape" stroke-opacity="1.0" transform="matrix(2.5937423706054688,0,0,2.5937423706054688,306,256)"><tspan x="40" dy="25">What is MIPS ???</tspan></text></g><rect x="150" y="150" width="47.00003206730466" height="61.000014901161194" onmousemove="resize(evt)" onclick="selectSpot(event.target,event)" fill="lightblue" stroke="black" opacity="0.5" stroke-width="2" stroke-opacity="1.0" title="Instrution Memory" content="The Memory Address Register (MAR) is a CPU register that either stores the memory address from which data will be fetched to the CPU or the address to which data will be sent and stored. In other words, MAR holds the memory location of data that needs to be accessed. When reading from memory, data addressed by MAR is fed into the MDR (memory data register) and then used by the CPU. When writing to memory, the CPU writes data from MDR to the memory location whose address is stored in MAR.
+The Memory Address Register is half of a minimal interface between a microprogram and computer storage. The other half is a memory data register." class="hotSpot" transform="matrix(1,0,0,1,729.9999389648438,151)"></rect><rect x="150" y="150" width="20.00002086162567" height="58.000014901161194" onmousemove="resize(evt)" onclick="selectSpot(event.target,event)" fill="lightblue" stroke="black" opacity="0.5" stroke-width="2" stroke-opacity="1.0" title="Program Counter" content="The program counter (PC), commonly called the instruction pointer (IP) in Intel x86 and Itanium microprocessors, and sometimes called the instruction address register, or just part of the instruction sequencer in some computers, is a processor register that indicates where the computer is in its instruction sequence. Depending on the details of the particular computer, the PC or IP holds either the memory address of the instruction being executed, or the address of the next instruction to be executed." class="hotSpot" transform="matrix(1,0,0,1,699.9999389648438,151)"></rect><rect x="150" y="150" width="47.00003182888594" height="60.000014901161194" onmousemove="resize(evt)" onclick="selectSpot(event.target,event)" fill="lightblue" stroke="black" opacity="0.5" stroke-width="2" stroke-opacity="1.0" title="Memory Data Register" content="The Memory Data Register (MDR) is the register of a computer's control unit that contains the data to be stored in the computer storage (e.g. RAM), or the data after a fetch from the computer storage. It acts like a buffer and holds anything that is copied from the memory ready for the processor to use it. The Memory Data Register is half of a minimal interface between a microprogram and computer storage, the other half is a memory address register." class="hotSpot" transform="matrix(1,0,0,1,987,177)"></rect><textCache index="5" content="<p>Thank You...</p>"></textCache><g class="frame" item="item17" transform="matrix(1,0,0,1,-5.99999999999999,5)" fno="7"><rect x="131" y="100" width="180" height="152" onclick="select(evt.target,evt)" fill="#ebdfdb" stroke="black" stroke-width="1" item="item13" class="shape" stroke-opacity="1.0" transform="matrix(1,0,0,1,1057,380.99993896484375)"></rect><text x="40" y="40" stroke="black" stroke-width="0.1" font-size="12" fill="#000000" onclick="select(evt.target,evt)" id="text5" item="item14" class="shape" stroke-opacity="1.0" transform="matrix(2.357947587966919,0,0,2.357947587966919,1110,414.99993896484375)"><tspan x="40" dy="25">Thank You...</tspan></text></g>
+<rect x="150" y="150" width="28.000024914744003" height="55.000014901161194" onmousemove="resize(evt)" onclick="selectSpot(event.target,event)" fill="lightblue" stroke="black" opacity="0.5" stroke-width="2" stroke-opacity="1.0" title="ALU" content="In computing, an arithmetic logic unit (ALU) is a digital circuit that performs arithmetic and logical operations. The ALU is a fundamental building block of the central processing unit of a computer, and even the simplest microprocessors contain one for purposes such as maintaining timers. The processors found inside modern CPUs and graphics processing units (GPUs) accommodate very powerful and very complex ALUs; a single component may contain a number of ALUs." class="hotSpot" transform="matrix(1,0,0,1,919.9999389648438,165)"></rect>
+</g> 
+</svg>
+</div>
+<script type='text/javascript'>
+document.getElementById('svgbasics').addEventListener('keydown', moveFrame, false);
+</script>
+</body>
+</html>
